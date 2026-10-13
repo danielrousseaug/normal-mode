@@ -1,0 +1,236 @@
+<!doctype html>
+<html class="cds-root">
+<head>
+<meta charset="utf-8">
+<title>Mock Code session</title>
+<script>
+  // in the harness: the app's real stylesheet and theme (?dark / ?light)
+  document.documentElement.dataset.mode = location.search.includes('dark') ? 'dark' : 'light';
+  if (location.protocol === 'app:') document.write('<link rel="stylesheet" href="/app.css">');
+</script>
+<style>
+  body { margin: 0; font: 14px var(--cds-font-sans, system-ui); display: grid; grid-template-columns: 200px 1fr 260px; height: 100vh;
+    background: var(--cds-page-bg, #faf9f7); color: var(--cds-text-primary, #222); }
+  nav { border-right: 1px solid #ddd; padding: 8px; overflow: auto; }
+  nav h4 { margin: 10px 8px 2px; font-size: 11px; opacity: .6; }
+  nav a { display: block; padding: 6px 8px; color: inherit; text-decoration: none; border-radius: 6px; }
+  main { display: flex; flex-direction: column; min-height: 0; }
+  [data-testid="epitaxy-virtual-transcript"] { flex: 1; overflow-y: auto; position: relative; }
+  #sizer { position: relative; }
+  [data-epitaxy-entry] { position: absolute; left: 24px; right: 24px; }
+  .prompt { background: var(--cds-bg-user-message, #ede9e3); padding: 10px; border-radius: 8px; position: relative; }
+  .tools { position: absolute; right: 6px; top: -14px; background: white; border: 1px solid #ccc; border-radius: 6px; }
+  .composer { border-top: 1px solid #ddd; padding: 10px 24px; display: flex; gap: 8px; }
+  [contenteditable] { flex: 1; min-height: 40px; border: 1px solid var(--cds-border-strong, #ccc); border-radius: 12px; padding: 8px; background: var(--cds-surface-2, white); }
+  #log { border-left: 1px solid var(--cds-border-strong, #ddd); padding: 8px; font: 11px ui-monospace, monospace; overflow: auto; white-space: pre-wrap; }
+  [role=menu] { position: fixed; background: white; border: 1px solid #ccc; border-radius: 6px; padding: 4px; z-index: 5; }
+  [role=menuitem] { padding: 3px 8px; }
+  [role=menuitem]:focus { background: #dbeafe; outline: none; }
+</style>
+</head>
+<body>
+<nav id="nav"></nav>
+<main>
+  <div data-testid="epitaxy-virtual-transcript" id="sc"><div id="sizer"></div></div>
+  <div class="composer"><div contenteditable="true" id="composer"></div><button>Send</button></div>
+</main>
+<div id="log"></div>
+<script>
+  const logEl = document.getElementById('log');
+  function log(s) { logEl.textContent = s + '\n' + logEl.textContent; }
+  window.__log = [];
+  document.addEventListener('keydown', (e) => {
+    const m = (e.ctrlKey ? 'ctrl+' : '') + (e.altKey ? 'alt+' : '') + (e.shiftKey ? 'shift+' : '');
+    window.__log.push(`KEY ${m}${e.key}`);
+  });
+
+  // 30 turns: a short prompt then a long reply; only rows near the viewport exist
+  const replyH = location.search.includes('tall') ? 2600 : 420; // ?tall: next prompt is out of the page
+  const entries = [];
+  let y = 16;
+  for (let i = 1; i <= 30; i++) {
+    entries.push({ id: `p${i}`, prompt: true, text: `Prompt ${i}`, top: y, h: 44 }); y += 44 + 24;
+    entries.push({ id: `r${i}`, prompt: false, text: `Reply ${i}. ` + 'Lorem ipsum dolor sit amet. '.repeat(40), top: y, h: replyH }); y += replyH + 24;
+  }
+  const sc = document.getElementById('sc');
+  const sizer = document.getElementById('sizer');
+  sizer.style.height = y + 'px';
+  const rendered = new Map();
+  function renderWindow() {
+    const lo = sc.scrollTop - sc.clientHeight * 0.5, hi = sc.scrollTop + sc.clientHeight * 1.5;
+    for (const e of entries) {
+      const on = e.top + e.h > lo && e.top < hi;
+      if (on && !rendered.has(e.id)) {
+        const row = document.createElement('div');
+        row.dataset.epitaxyEntry = e.id;
+        row.style.top = e.top + 'px';
+        row.style.height = e.h + 'px';
+        if (e.prompt) {
+          row.innerHTML = `<div class="prompt" data-take-back-entry="${e.id}">${e.text}</div>`;
+          const msg = row.firstChild;
+          msg.addEventListener('pointerenter', () => {
+            if (msg.querySelector('.tools')) return;
+            msg.insertAdjacentHTML('beforeend', `<span class="tools"><button aria-label="Rewind to here">↺</button></span>`);
+            msg.querySelector('button').addEventListener('click', () => rewind(e));
+          });
+          msg.addEventListener('pointerleave', () => msg.querySelector('.tools')?.remove());
+        } else {
+          row.textContent = e.text;
+        }
+        sizer.append(row);
+        rendered.set(e.id, row);
+      } else if (!on && rendered.has(e.id)) {
+        rendered.get(e.id).remove();
+        rendered.delete(e.id);
+      }
+    }
+  }
+  sc.addEventListener("scroll", renderWindow);
+  setInterval(renderWindow, 30); // keeps drawing when the test pane is hidden (no scroll events there)
+  renderWindow();
+
+  // like the app: stick to the bottom while pinned. Only a user gesture
+  // (wheel, touch, pointer, keys) unpins; ?stream grows the last reply, and a
+  // pinned view follows it, snapping back any scroll that wasn't a gesture.
+  let pinned = false;
+  let gestureAt = -1e9;
+  for (const t of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+    sc.addEventListener(t, () => { gestureAt = performance.now(); }, { passive: true, capture: true });
+  }
+  sc.addEventListener('scroll', () => {
+    const atBottom = sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 2;
+    if (atBottom) pinned = true;
+    else if (pinned && performance.now() - gestureAt < 300) pinned = false;
+  });
+  if (location.search.includes('stream')) {
+    const last = entries[entries.length - 1];
+    setInterval(() => {
+      last.h += 6;
+      y += 6;
+      sizer.style.height = y + 'px';
+      const row = rendered.get(last.id);
+      if (row) row.style.height = last.h + 'px';
+      if (pinned) sc.scrollTop = sc.scrollHeight;
+    }, 50);
+  }
+  window.__pinned = () => pinned;
+
+  const composer = document.getElementById('composer');
+  composer.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    const text = composer.textContent.trim();
+    if (!text) return;
+    log('SENT ' + text);
+    composer.textContent = '';
+    setTimeout(() => composer.focus(), 60); // the app keeps the composer focused after sending
+  });
+  function rewind(e) {
+    log('REWIND ' + e.id);
+    composer.textContent = e.text;
+    composer.focus();
+  }
+
+  // right-click menu on any entry
+  sc.addEventListener('contextmenu', (ev) => {
+    const row = ev.target.closest('[data-epitaxy-entry]');
+    if (!row) return;
+    ev.preventDefault();
+    const e = entries.find((x) => x.id === row.dataset.epitaxyEntry);
+    document.querySelector('[role=menu]')?.remove();
+    const items = ['Copy message', 'Copy message as Markdown', ...(e.prompt ? ['Rewind to here'] : []), 'Fork from here'];
+    document.body.insertAdjacentHTML('beforeend', `<div role="menu" style="left:${ev.clientX}px;top:${ev.clientY}px">${items.map((t) => `<div role="menuitem" tabindex="-1">${t}</div>`).join('')}</div>`);
+    const menu = document.querySelector('[role=menu]');
+    const els = [...menu.children];
+    els[0].focus();
+    const pick = (item) => {
+      log(`MENU ${item.textContent} ${e.id}`);
+      menu.remove();
+      if (item.textContent === 'Rewind to here') rewind(e);
+    };
+    els.forEach((el) => el.addEventListener('click', () => pick(el)));
+    menu.addEventListener('keydown', (k) => {
+      const i = els.indexOf(document.activeElement);
+      if (k.key === 'ArrowDown') els[Math.min(i + 1, els.length - 1)].focus();
+      if (k.key === 'ArrowUp') els[Math.max(i - 1, 0)].focus();
+      if (k.key === 'Enter') pick(els[i]);
+      if (k.key === 'Escape') menu.remove();
+    });
+  });
+
+  // like the app: Ctrl+Tab opens the next session, and typing with nothing
+  // focused goes into the composer
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'Tab') {
+      e.preventDefault();
+      location.hash = location.hash === '#/s2' ? '#/s1' : '#/s2';
+      return;
+    }
+    const idle = !document.activeElement || document.activeElement === document.body;
+    if (idle && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) composer.focus();
+  });
+
+  // like the app's sidebar: rows keyed by session; pinned ones keep a manual
+  // order, changed with Move up / Move down in the row's right-click menu
+  const sessions = [['s1', 'Session one'], ['s2', 'Session two'], ['s3', 'Session three'], ['s4', 'Session four']];
+  let pinnedRows = ['code:s4', 'code:s1'];
+  const nav = document.getElementById('nav');
+  function renderNav() {
+    const sel = (id) => (location.hash === `#/${id}` ? ' data-selected="focused"' : '');
+    const row = ([id, name]) => `<div data-row-key="code:${id}" data-jump-hint-row><div data-row${sel(id)}><a data-row-main-button href="#/${id}"${sel(id)}>${name}</a></div></div>`;
+    const byKey = Object.fromEntries(sessions.map((x) => [`code:${x[0]}`, x]));
+    nav.innerHTML = '<h4>Pinned</h4>' + pinnedRows.map((k) => row(byKey[k])).join('') +
+      '<h4>Recents</h4>' + sessions.filter(([id]) => !pinnedRows.includes(`code:${id}`)).map(row).join('');
+  }
+  renderNav();
+  window.addEventListener('hashchange', renderNav);
+  nav.addEventListener('contextmenu', (ev) => {
+    const r = ev.target.closest('[data-row-key]');
+    if (!r) return;
+    ev.preventDefault();
+    const key = r.dataset.rowKey;
+    const i = pinnedRows.indexOf(key);
+    const items = [...(i > 0 ? ['Move up'] : []), ...(i >= 0 && i < pinnedRows.length - 1 ? ['Move down'] : []), i >= 0 ? 'Unpin' : 'Pin', 'Rename'];
+    document.querySelector('[role=menu]')?.remove();
+    const shortcut = { Pin: 'P', Unpin: 'P' };
+    document.body.insertAdjacentHTML('beforeend', `<div role="menu" style="left:${ev.clientX}px;top:${ev.clientY}px">${items.map((t) => `<div role="menuitem" tabindex="-1"><span>${t}</span>${shortcut[t] ? `<kbd>${shortcut[t]}</kbd>` : ''}</div>`).join('')}</div>`);
+    const menu = document.querySelector('[role=menu]');
+    menu.firstChild.focus();
+    const close = () => menu.remove();
+    menu.addEventListener('keydown', (k) => { if (k.key === 'Escape') close(); });
+    for (const el of menu.children) {
+      el.addEventListener('click', () => {
+        const t = el.firstChild.textContent;
+        if (t === 'Move up') pinnedRows.splice(i - 1, 0, ...pinnedRows.splice(i, 1));
+        if (t === 'Move down') pinnedRows.splice(i + 1, 0, ...pinnedRows.splice(i, 1));
+        if (t === 'Pin') pinnedRows.push(key);
+        if (t === 'Unpin') pinnedRows.splice(i, 1);
+        log(`SIDEBAR ${t} ${key}`);
+        close();
+        renderNav();
+      });
+    }
+  });
+
+  // ?pane: opening session two puts keyboard focus in a side pane (an iframe),
+  // as the app does for sessions with an artifact or browser open
+  if (location.search.includes('pane')) {
+    document.body.insertAdjacentHTML('beforeend', '<iframe id="pane" srcdoc="<input id=i>" style="position:fixed;right:0;bottom:0;width:240px;height:120px"></iframe>');
+    window.addEventListener('hashchange', () => {
+      if (location.hash === '#/s2') setTimeout(() => document.getElementById('pane').contentDocument.getElementById('i').focus(), 20);
+    });
+  }
+
+  // like the app: opening a session focuses the composer
+  window.addEventListener('hashchange', () => { log('OPEN ' + location.hash); composer.focus(); });
+  setTimeout(() => composer.focus(), 100);
+</script>
+<script>
+  // the Electron harness preloads Normal Mode like the app does; elsewhere load it here
+  if (location.protocol !== 'app:') {
+    window.__NORMAL_MODE_FORCE = true;
+    document.write('<script src="../src/normal-mode.js"><\/script>');
+  }
+</script>
+</body>
+</html>
