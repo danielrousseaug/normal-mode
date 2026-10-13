@@ -8,7 +8,9 @@ sessions without touching the mouse.
 > copy of the app behaves, so read the code before you run it, and check
 > Anthropic's terms for your situation.
 
-![The cheat sheet, opened with ?](docs/cheatsheet.png)
+[![Demo: scrolling, prompt jumps, hints, switching and moving sessions, the cheat sheet](docs/demo.gif)](docs/demo.mp4)
+
+<sub>45 seconds on a stand-in page with made-up sessions. [Watch the MP4](docs/demo.mp4).</sub>
 
 ## Install
 
@@ -111,6 +113,13 @@ nix run nixpkgs#electron -- --no-sandbox test/harness.js
 Pass scenario names to run some (`tap hold prompts moveSession ...`). Set
 `CLAUDE_APP` to an installed Claude package to style the mock with the app's
 real stylesheet; `shots` saves screenshots to `$SHOTS`.
+
+`docs/demo/record.js` records the demo above the same way, from
+`docs/demo/demo.html`, and writes `docs/demo.mp4` and `docs/demo.gif`:
+
+```bash
+CLAUDE_APP=/path/to/claude-desktop nix shell nixpkgs#ffmpeg nixpkgs#electron -c electron --no-sandbox docs/demo/record.js
+```
 
 ## License
 

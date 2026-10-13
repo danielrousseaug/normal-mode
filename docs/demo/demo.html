@@ -1,0 +1,560 @@
+<!doctype html>
+<html class="cds-root" data-mode="dark">
+<head>
+<meta charset="utf-8">
+<title>Normal Mode demo</title>
+<!--
+  The stage for docs/demo/record.js: a made-up Code tab with the markup Normal
+  Mode relies on (same mechanics as test/mock.html), plus the recording's own
+  layer (captions, key caps, title and closing cards), which lives outside
+  Normal Mode. The recorder serves the app's real stylesheet at /app.css.
+-->
+<script>
+  if (location.protocol === 'app:') document.write('<link rel="stylesheet" href="/app.css">');
+</script>
+<style>
+  :root {
+    --bg: var(--cds-page-bg, #0b0b0b);
+    --side: var(--cds-surface-1, #151515);
+    --raised: var(--cds-surface-2, #1a1a19);
+    --text: var(--cds-text-primary, #f0efec);
+    --text-2: var(--cds-text-secondary, #c3c2b7);
+    --muted: var(--cds-text-muted, #898781);
+    --line: var(--cds-border, rgba(255, 255, 255, .1));
+    --line-strong: var(--cds-border-strong, rgba(255, 255, 255, .2));
+    --tint: var(--cds-alpha-1, rgba(255, 255, 255, .05));
+    --tint-2: var(--cds-alpha-2, rgba(255, 255, 255, .1));
+    --bubble: var(--cds-bg-user-message, rgba(255, 255, 255, .05));
+    --clay: var(--cds-clay, #d97757);
+    --accent: var(--cds-text-accent, #6da7ec);
+    --added: var(--cds-text-git-added, #32d74b);
+    --removed: var(--cds-text-git-removed, #ff2c56);
+    --sans: var(--cds-font-sans, system-ui, sans-serif);
+    --mono: var(--cds-font-mono, ui-monospace, monospace);
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: grid; grid-template: minmax(0, 1fr) / 244px minmax(0, 1fr); height: 100vh; overflow: hidden;
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+  }
+
+  /* sidebar */
+  #nav { background: var(--side); border-right: 1px solid var(--line); padding: 12px 8px; overflow: hidden; font-size: 13px; }
+  .new {
+    display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 10px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--text); font: 500 13px var(--sans); text-align: left;
+  }
+  .new .plus { font-size: 16px; line-height: 1; color: var(--muted); }
+  .sec { margin: 16px 10px 4px; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+  [data-row-key] { position: relative; }
+  [data-row] a {
+    display: block; height: 30px; line-height: 30px; padding: 0 10px; border-radius: 8px; color: var(--text-2);
+    text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  [data-row] a:hover { background: var(--cds-fill-ghost-hover, rgba(255, 255, 255, .075)); }
+  [data-row][data-selected="focused"] { position: relative; z-index: 1; }
+  [data-row][data-selected="focused"] a { background: color-mix(in srgb, var(--side), #fff 10%); color: var(--text); }
+
+  /* session */
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .topbar {
+    flex: none; height: 46px; display: flex; align-items: center; gap: 10px; padding: 0 20px;
+    border-bottom: 1px solid var(--line); font-size: 13.5px;
+  }
+  .topbar .name { font-weight: 500; }
+  .topbar .chip { font: 12px var(--mono); color: var(--muted); padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; }
+  [data-testid="epitaxy-virtual-transcript"] {
+    flex: 1; overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .16) transparent;
+  }
+  .col { max-width: 700px; margin: 0 auto; padding: 22px 28px 26px; font-size: 14px; line-height: 21px; }
+  [data-epitaxy-entry] { margin: 0 0 18px; }
+  .prompt {
+    position: relative; width: fit-content; max-width: 88%; padding: 9px 14px; border-radius: 14px;
+    background: var(--bubble); color: var(--text);
+  }
+  .tools { position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); }
+  .tools button {
+    width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line); background: var(--raised);
+    color: var(--text-2); font-size: 14px; line-height: 1; padding: 0;
+  }
+  .reply p { margin: 0 0 10px; }
+  .reply h3 { margin: 18px 0 6px; font-size: 15px; font-weight: 600; }
+  .reply ul, .reply ol { margin: 0 0 10px; padding-left: 22px; }
+  .reply ul { list-style: disc; } .reply ol { list-style: decimal; }
+  .reply li::marker { color: var(--muted); }
+  .reply li { margin: 3px 0; }
+  .reply strong { font-weight: 600; }
+  .tool { display: flex; align-items: baseline; gap: 8px; margin: 5px 0; font-size: 13px; color: var(--text-2); }
+  .tool::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--added); transform: translateY(-1px); }
+  .tool b { font-weight: 500; color: var(--text); }
+  .tool code { background: none; padding: 0; color: var(--text-2); }
+  .tool .res { color: var(--muted); }
+  code { font: 12.5px var(--mono); background: var(--tint); padding: 1px 5px; border-radius: 4px; }
+  pre {
+    margin: 8px 0 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--raised);
+    font: 12.5px/1.6 var(--mono); white-space: pre; overflow: hidden;
+  }
+  pre code { background: none; padding: 0; }
+  .kw { color: var(--accent); } .str { color: #e0a385; } .cm { color: var(--muted); }
+  .add, .del { display: block; margin: 0 -14px; padding: 0 14px; }
+  .add { color: #b5e3bd; background: rgba(50, 215, 75, .09); }
+  .del { color: #f1b3c0; background: rgba(255, 44, 86, .09); }
+  .add-t { color: #7fd48d; } .del-t { color: #ee8a9f; }
+  .tool + p, .tool + h3 { margin-top: 10px; }
+  .done { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+  table { border-collapse: collapse; margin: 6px 0 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 5px 22px 5px 0; border-bottom: 1px solid var(--line); text-align: left; }
+  th { font-weight: 500; color: var(--muted); }
+  .typing::after { content: '▍'; color: var(--muted); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* composer */
+  .composer-wrap { flex: none; position: relative; padding: 0 28px 64px; } /* room below for the recording's captions */
+  .composer-wrap::before {
+    content: ''; position: absolute; left: 0; right: 12px; top: -28px; height: 28px; pointer-events: none;
+    background: linear-gradient(transparent, var(--bg));
+  }
+  .composer {
+    max-width: 644px; margin: 0 auto; padding: 11px 12px 9px 15px; border: 1px solid var(--line-strong);
+    border-radius: var(--cds-radius-composer, 14px); background: var(--raised); font-size: 14px; line-height: 21px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .25); transition: border-color .15s;
+  }
+  .composer:focus-within { border-color: rgba(255, 255, 255, .34); }
+  #composer { min-height: 21px; outline: none; color: var(--text); }
+  #composer:empty::before { content: attr(data-placeholder); color: var(--muted); }
+  .bar { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  .bar .grow { flex: 1; }
+  .send {
+    width: 28px; height: 28px; border: 0; border-radius: 8px; background: var(--clay); color: #fff;
+    font: 600 15px var(--sans); padding: 0;
+  }
+
+  [role=menu] {
+    position: fixed; z-index: 5; min-width: 150px; padding: 4px; border: 1px solid var(--line-strong); border-radius: 8px;
+    background: var(--raised); box-shadow: var(--cds-shadow-popover, 0 8px 24px rgba(0, 0, 0, .3)); font-size: 13px;
+  }
+  [role=menuitem] { display: flex; justify-content: space-between; padding: 4px 8px; border-radius: 5px; }
+  [role=menuitem]:focus { background: var(--tint-2); outline: none; }
+
+  /* ---- the recording's layer: not part of the app or of Normal Mode ---- */
+  #demo-hud {
+    position: fixed; left: 0; right: 0; bottom: 14px; z-index: 2147483647; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center; gap: 10px; font-family: var(--sans);
+  }
+  #demo-hud .caps { display: flex; gap: 8px; height: 52px; transition: opacity .3s; }
+  #demo-hud .caps.gone { opacity: 0; }
+  #demo-hud kbd {
+    min-width: 52px; height: 50px; padding: 0 15px; display: grid; place-items: center; box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, .2); border-bottom-width: 3px; border-radius: 11px;
+    background: linear-gradient(#2c2b29, #222120); color: #f6f5f2; font: 600 24px/1 var(--mono);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .5); animation: cap-in .14s ease-out;
+    transition: transform .07s, border-bottom-width .07s, background .07s;
+  }
+  #demo-hud kbd.word { font-size: 17px; font-family: var(--sans); font-weight: 600; }
+  #demo-hud kbd.down {
+    transform: translateY(2px); border-bottom-width: 1px; border-color: rgba(217, 119, 87, .9);
+    background: linear-gradient(#3a2a23, #2c221d);
+  }
+  @keyframes cap-in { from { opacity: 0; transform: translateY(6px) scale(.9); } }
+  #demo-hud .cap {
+    display: flex; align-items: center; gap: 10px; padding: 9px 18px; border-radius: 999px;
+    background: rgba(18, 18, 17, .9); border: 1px solid rgba(255, 255, 255, .13); color: #f0efec;
+    font-size: 15.5px; line-height: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); backdrop-filter: blur(8px);
+    transition: opacity .18s, transform .18s;
+  }
+  #demo-hud .cap.out { opacity: 0; transform: translateY(4px); }
+  #demo-hud .cap[hidden] { display: none; }
+  #demo-hud .ck { font: 600 15px var(--mono); color: var(--clay); }
+  #demo-hud .dot { color: rgba(255, 255, 255, .35); }
+
+  #demo-card {
+    position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; pointer-events: none;
+    background: radial-gradient(1200px 600px at 50% 40%, #1c1a18, #0b0b0b 70%); color: #f0efec; font-family: var(--sans);
+    opacity: 0; transition: opacity .45s ease;
+  }
+  #demo-card.on { opacity: 1; }
+  #demo-card .inner { text-align: center; }
+  #demo-card .name { font-size: 54px; line-height: 1.1; font-weight: 600; letter-spacing: -.01em; }
+  #demo-card .sub { margin-top: 12px; font-size: 21px; color: #b9b7af; }
+  #demo-card .url { margin-top: 18px; font: 500 21px var(--mono); color: var(--clay); }
+  #demo-card .fine { margin-top: 28px; font-size: 13.5px; color: #77756f; }
+  #demo-card .row { margin-top: 30px; display: flex; gap: 8px; justify-content: center; }
+  #demo-card .row span {
+    min-width: 34px; height: 32px; padding: 0 9px; display: grid; place-items: center; box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, .16); border-bottom-width: 2px; border-radius: 7px; background: #1d1c1a;
+    font: 600 15px var(--mono); color: #cfcdc6;
+  }
+</style>
+</head>
+<body>
+<nav id="nav"></nav>
+<main>
+  <div class="topbar"><span class="name" id="name"></span><span class="chip" id="repo"></span><span class="chip" id="branch"></span></div>
+  <div data-testid="epitaxy-virtual-transcript" id="sc"><div class="col" id="col"></div></div>
+  <div class="composer-wrap">
+    <div class="composer">
+      <div contenteditable="true" id="composer" data-placeholder="Describe a task or ask a question"></div>
+      <div class="bar"><span>+</span><span>Ask before edits</span><span class="grow"></span><span>Plan mode off</span><button class="send" aria-label="Send">↑</button></div>
+    </div>
+  </div>
+</main>
+<script>
+  // ---- made-up sessions ----------------------------------------------------
+  const tool = (verb, arg, res) => `<div class="tool"><b>${verb}</b><code>${arg}</code>${res ? `<span class="res">${res}</span>` : ''}</div>`;
+  const SESSIONS = [
+    {
+      id: 's1', title: 'Fix flaky login test', repo: 'acme-web', branch: 'fix/login-flake',
+      turns: [
+        ['The login test fails about one run in ten on CI. Can you find out why?', `
+          ${tool('Read', 'tests/e2e/login.spec.ts')}
+          ${tool('Read', 'src/auth/session.ts')}
+          ${tool('Bash', 'npm test -- login --repeat 20', '3 failed · 17 passed')}
+          <p>It’s a race. After <strong>Sign in</strong> is clicked, the test checks the URL right away, but the redirect only happens once <code>refreshToken()</code> resolves. On a slow runner the check wins.</p>
+<pre><code><span class="kw">await</span> page.click(<span class="str">'button[type=submit]'</span>);
+expect(page.url()).toContain(<span class="str">'/dashboard'</span>); <span class="cm">// runs before the redirect</span></code></pre>`],
+        ['Makes sense. Fix it without adding a sleep.', `
+          <p>I’ll wait for the navigation the click starts instead of checking right away.</p>
+          ${tool('Edit', 'tests/e2e/login.spec.ts', '+4 −2')}
+<pre><code><span class="del">- await page.click('button[type=submit]');</span><span class="del">- expect(page.url()).toContain('/dashboard');</span><span class="add">+ await Promise.all([</span><span class="add">+   page.waitForURL('**/dashboard'),</span><span class="add">+   page.click('button[type=submit]'),</span><span class="add">+ ]);</span></code></pre>
+          ${tool('Bash', 'npm test -- login --repeat 50', '50 passed')}
+          <p>Fifty runs in a row pass now.</p>`],
+        ['Does anything else in the suite race the same way?', `
+          ${tool('Grep', '"page.url()" tests/e2e', '6 matches')}
+          <p>Two more specs check the URL right after a click:</p>
+          <ul><li><code>checkout.spec.ts</code> line 41, after <strong>Place order</strong></li>
+          <li><code>settings.spec.ts</code> line 88, after <strong>Save</strong></li></ul>
+          ${tool('Edit', 'tests/e2e/checkout.spec.ts', '+4 −2')}
+          ${tool('Edit', 'tests/e2e/settings.spec.ts', '+4 −2')}
+          <p>Both now wait for the navigation the same way.</p>`],
+        ['Pull that into a helper so the next test can’t get it wrong.', `
+          ${tool('Write', 'tests/e2e/helpers.ts', '+6')}
+<pre><code><span class="kw">export async function</span> clickAndWaitForURL(page: Page, selector: string, url: string) {
+  <span class="kw">await</span> Promise.all([page.waitForURL(url), page.click(selector)]);
+}</code></pre>
+          ${tool('Edit', 'tests/e2e/login.spec.ts', '+1 −4')}
+          ${tool('Edit', 'tests/e2e/checkout.spec.ts', '+1 −4')}
+          ${tool('Edit', 'tests/e2e/settings.spec.ts', '+1 −4')}
+          <p>All three specs use <code>clickAndWaitForURL()</code> now.</p>`],
+        ['Great. Run the whole suite a few times and summarize.', `
+          ${tool('Bash', 'npm test -- --repeat 5', '5 runs · 212 tests each · 0 failed')}
+          <h3>What was wrong</h3>
+          <p>Three specs clicked a button that navigates, then checked the URL immediately. The redirect waits on <code>refreshToken()</code>, which takes 40–300 ms on CI, so the check sometimes ran first.</p>
+          <h3>Why waiting works</h3>
+          <p><code>waitForURL()</code> resolves once the navigation commits, so the assertion can’t run early. If the redirect never happens, the test fails with a clear timeout instead of a confusing URL mismatch.</p>
+          <h3>What changed</h3>
+          <ul><li><code>tests/e2e/helpers.ts</code>: new <code>clickAndWaitForURL()</code></li>
+          <li><code>tests/e2e/login.spec.ts</code>: waits for <code>/dashboard</code> before asserting</li>
+          <li><code>tests/e2e/checkout.spec.ts</code>: waits for the order page</li>
+          <li><code>tests/e2e/settings.spec.ts</code>: waits for the saved state</li></ul>
+<pre><code> tests/e2e/helpers.ts       | 6 <span class="add-t">++++++</span>
+ tests/e2e/login.spec.ts    | 5 <span class="add-t">++</span><span class="del-t">---</span>
+ tests/e2e/checkout.spec.ts | 5 <span class="add-t">++</span><span class="del-t">---</span>
+ tests/e2e/settings.spec.ts | 5 <span class="add-t">++</span><span class="del-t">---</span>
+ 4 files changed, 12 insertions(+), 9 deletions(-)</code></pre>
+          <h3>Verification</h3>
+          <table><thead><tr><th>Run</th><th>Tests</th><th>Failed</th><th>Time</th></tr></thead><tbody>
+          <tr><td>1</td><td>212</td><td>0</td><td>2m 31s</td></tr>
+          <tr><td>2</td><td>212</td><td>0</td><td>2m 28s</td></tr>
+          <tr><td>3</td><td>212</td><td>0</td><td>2m 34s</td></tr>
+          <tr><td>4</td><td>212</td><td>0</td><td>2m 29s</td></tr>
+          <tr><td>5</td><td>212</td><td>0</td><td>2m 30s</td></tr></tbody></table>
+          <p><code>login.spec.ts</code> on its own passed 50 of 50, and no sleeps or retries were added.</p>
+          <h3>Follow-ups</h3>
+          <ul><li>Set <code>retries: 0</code> in CI so new flakes fail loudly instead of passing on a retry</li>
+          <li>A lint rule against <code>expect(page.url())</code> right after <code>click()</code> would catch the next one</li></ul>
+          <p>All 212 tests pass in five runs in a row. The flake is gone.</p>
+          <div class="done">Worked for 3m 12s</div>`],
+      ],
+    },
+    {
+      id: 's2', title: 'Add dark mode toggle', repo: 'acme-web', branch: 'feat/theme-toggle',
+      turns: [
+        ['Add a theme toggle to the settings page. It should follow the system by default.', `
+          ${tool('Read', 'src/settings/SettingsPage.tsx')}
+          ${tool('Write', 'src/settings/ThemeToggle.tsx', '+48')}
+          ${tool('Edit', 'src/settings/SettingsPage.tsx', '+3')}
+          <p>Settings has a new <strong>Theme</strong> row with three options: System, Light and Dark. System is the default and follows <code>prefers-color-scheme</code> as it changes.</p>
+<pre><code>&lt;ThemeToggle value={theme} onChange={setTheme} /&gt;</code></pre>`],
+      ],
+      reply: [
+        '<p>Good idea. I’ll save it under <code>theme</code> and apply it before the first paint, so the page doesn’t flash.</p>',
+        tool('Edit', 'src/theme.ts', '+9 −1'),
+        '<p>Done. The choice now survives a reload.</p>',
+      ],
+    },
+    {
+      id: 's3', title: 'Refactor billing service', repo: 'billing', branch: 'refactor/split-billing',
+      turns: [
+        ['BillingService is 600 lines. Split it into invoicing and payments.', `
+          ${tool('Read', 'src/billing/BillingService.ts', '612 lines')}
+          <p>Here’s the plan before I touch anything:</p>
+          <ol><li><code>InvoiceService</code>: creating, numbering and sending invoices</li>
+          <li><code>PaymentService</code>: charges, refunds and retries</li>
+          <li><code>BillingService</code> stays as a thin facade, so callers don’t change</li></ol>
+          <p>Shall I go ahead?</p>`],
+        ['Yes, go ahead.', `
+          ${tool('Write', 'src/billing/InvoiceService.ts', '+231')}
+          ${tool('Write', 'src/billing/PaymentService.ts', '+187')}
+          ${tool('Edit', 'src/billing/BillingService.ts', '+38 −412')}
+          ${tool('Bash', 'npm test -- billing', '86 passed')}
+          <p>The split is done and all 86 billing tests pass.</p>`],
+      ],
+    },
+    {
+      id: 's4', title: 'Bump eslint to v9', repo: 'acme-web', branch: 'chore/eslint-9',
+      turns: [
+        ['Upgrade eslint to v9 and migrate our config.', `
+          ${tool('Bash', 'npm i -D eslint@9')}
+          ${tool('Write', 'eslint.config.js', '+42')}
+          ${tool('Bash', 'git rm .eslintrc.json')}
+          ${tool('Bash', 'npx eslint .', '0 problems')}
+          <p>The rules now live in the flat config, <code>eslint.config.js</code>. Two plugins needed newer versions; both are bumped in <code>package.json</code>.</p>`],
+      ],
+    },
+    {
+      id: 's5', title: 'Write release notes for 2.4', repo: 'acme-web', branch: 'main',
+      turns: [['Draft release notes for 2.4 from the merged PRs.', '<p>Here’s a draft grouped by area: features, fixes and internal changes.</p>']],
+    },
+    {
+      id: 's6', title: 'Investigate slow CI cache', repo: 'infra', branch: 'main',
+      turns: [['CI restores its cache in 4 minutes. Why so slow?', '<p>The cache key includes the lockfile hash and the date, so it misses every morning.</p>']],
+    },
+    {
+      id: 's7', title: 'Rename user settings API', repo: 'acme-api', branch: 'chore/settings-api',
+      turns: [['Rename /user/prefs to /user/settings and keep the old path working.', '<p>Both paths now hit the same handler; the old one logs a deprecation warning.</p>']],
+    },
+  ];
+  const byId = Object.fromEntries(SESSIONS.map((s) => [s.id, s]));
+  let pinned = ['s1', 's2', 's3'];
+  const order = () => [...pinned, ...SESSIONS.map((s) => s.id).filter((id) => !pinned.includes(id))];
+  const current = () => byId[(location.hash.match(/^#\/(s\d+)/) || [])[1]] || SESSIONS[0];
+
+  const sc = document.getElementById('sc');
+  const col = document.getElementById('col');
+  const composer = document.getElementById('composer');
+  const nav = document.getElementById('nav');
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+  // ---- the transcript --------------------------------------------------------
+  function promptRow(id, text) {
+    const row = document.createElement('div');
+    row.dataset.epitaxyEntry = id;
+    row.innerHTML = `<div class="prompt" data-take-back-entry="${id}">${esc(text)}</div>`;
+    const msg = row.firstChild;
+    // like the app: the prompt's buttons appear on hover
+    msg.addEventListener('pointerenter', () => {
+      if (msg.querySelector('.tools')) return;
+      msg.insertAdjacentHTML('beforeend', '<span class="tools"><button aria-label="Rewind to here">↺</button></span>');
+      msg.querySelector('button').addEventListener('click', () => takeBack(id));
+    });
+    msg.addEventListener('pointerleave', () => msg.querySelector('.tools')?.remove());
+    return row;
+  }
+  function replyRow(id, html) {
+    const row = document.createElement('div');
+    row.dataset.epitaxyEntry = id;
+    row.className = 'reply';
+    row.innerHTML = html;
+    return row;
+  }
+  function renderTranscript(s) {
+    col.replaceChildren(...s.turns.flatMap(([p, r], i) => [promptRow(`${s.id}p${i}`, p), replyRow(`${s.id}r${i}`, r)]));
+    document.getElementById('name').textContent = s.title;
+    document.getElementById('repo').textContent = s.repo;
+    document.getElementById('branch').textContent = s.branch;
+  }
+
+  // like the app: stick to the bottom until a gesture (wheel, key, pointer) moves away
+  let stuck = true;
+  let gestureAt = -1e9;
+  for (const t of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+    sc.addEventListener(t, () => { gestureAt = performance.now(); }, { passive: true, capture: true });
+  }
+  const atBottom = () => sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 2;
+  sc.addEventListener('scroll', () => {
+    if (atBottom()) stuck = true;
+    else if (stuck && performance.now() - gestureAt < 300) stuck = false;
+  });
+  const follow = () => { if (stuck) sc.scrollTop = sc.scrollHeight; };
+
+  // Rewind to here: the prompt and everything after it go, and its text comes
+  // back to the composer for editing
+  function takeBack(id) {
+    const s = current();
+    const i = s.turns.findIndex((_, k) => `${s.id}p${k}` === id);
+    if (i < 0) return;
+    const [text] = s.turns[i];
+    s.turns = s.turns.slice(0, i);
+    renderTranscript(s);
+    composer.textContent = text;
+    composer.focus();
+    const r = document.createRange();
+    r.selectNodeContents(composer);
+    r.collapse(false);
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+  }
+
+  // sending: the prompt joins the transcript and a short reply streams in
+  composer.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    const text = composer.textContent.trim();
+    if (!text) return;
+    composer.textContent = '';
+    setTimeout(() => composer.focus(), 60); // the app keeps the composer focused after sending
+    const s = current();
+    const n = s.turns.length;
+    s.turns.push([text, '']);
+    stuck = true;
+    col.append(promptRow(`${s.id}p${n}`, text));
+    const reply = replyRow(`${s.id}r${n}`, '<p class="typing"></p>');
+    col.append(reply);
+    follow();
+    const parts = s.reply || ['<p>On it.</p>'];
+    let k = 0;
+    setTimeout(function next() {
+      if (k >= parts.length) { s.turns[n][1] = reply.innerHTML; return; }
+      reply.querySelector('.typing')?.remove();
+      reply.insertAdjacentHTML('beforeend', parts[k++]);
+      if (k < parts.length) reply.insertAdjacentHTML('beforeend', '<p class="typing"></p>');
+      follow();
+      setTimeout(next, 420);
+    }, 650);
+  });
+
+  // ---- the sidebar -----------------------------------------------------------
+  function renderNav() {
+    const before = new Map([...nav.querySelectorAll('[data-row-key]')].map((r) => [r.dataset.rowKey, r.getBoundingClientRect().top]));
+    const open = current().id;
+    const row = (id) => {
+      const sel = id === open ? ' data-selected="focused"' : '';
+      return `<div data-row-key="code:${id}" data-jump-hint-row><div data-row${sel}><a data-row-main-button href="#/${id}"${sel}>${esc(byId[id].title)}</a></div></div>`;
+    };
+    nav.innerHTML = '<button class="new"><span class="plus">+</span>New session</button>' +
+      '<div class="sec">Pinned</div>' + pinned.map(row).join('') +
+      '<div class="sec">Recents</div>' + order().filter((id) => !pinned.includes(id)).map(row).join('');
+    // rows that moved slide into place
+    for (const r of nav.querySelectorAll('[data-row-key]')) {
+      const was = before.get(r.dataset.rowKey);
+      const dy = was === undefined ? 0 : was - r.getBoundingClientRect().top;
+      if (dy) r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    }
+  }
+  nav.addEventListener('contextmenu', (ev) => {
+    const r = ev.target.closest('[data-row-key]');
+    if (!r) return;
+    ev.preventDefault();
+    const id = r.dataset.rowKey.slice(5);
+    const i = pinned.indexOf(id);
+    const items = [...(i > 0 ? ['Move up'] : []), ...(i >= 0 && i < pinned.length - 1 ? ['Move down'] : []), i >= 0 ? 'Unpin' : 'Pin', 'Rename'];
+    document.querySelector('[role=menu]')?.remove();
+    document.body.insertAdjacentHTML('beforeend', `<div role="menu" style="left:${ev.clientX}px;top:${ev.clientY}px">${items.map((t) => `<div role="menuitem" tabindex="-1"><span>${t}</span></div>`).join('')}</div>`);
+    const menu = document.querySelector('[role=menu]');
+    menu.firstChild.focus();
+    const close = () => menu.remove();
+    menu.addEventListener('keydown', (k) => { if (k.key === 'Escape') close(); });
+    for (const el of menu.children) {
+      el.addEventListener('click', () => {
+        const t = el.textContent;
+        if (t === 'Move up') pinned.splice(i - 1, 0, ...pinned.splice(i, 1));
+        if (t === 'Move down') pinned.splice(i + 1, 0, ...pinned.splice(i, 1));
+        if (t === 'Pin') pinned.push(id);
+        if (t === 'Unpin') pinned.splice(i, 1);
+        close();
+        renderNav();
+      });
+    }
+  });
+
+  // ---- opening sessions --------------------------------------------------------
+  const drafts = {};
+  let shown = null;
+  function open() {
+    const s = current();
+    if (shown) drafts[shown] = composer.textContent;
+    shown = s.id;
+    composer.textContent = drafts[s.id] || '';
+    renderTranscript(s);
+    renderNav();
+    stuck = true;
+    sc.scrollTop = sc.scrollHeight; // a session opens at its latest output
+    composer.focus(); // like the app; Normal Mode puts you back in normal mode
+  }
+  window.addEventListener('hashchange', open);
+  if (!location.hash) history.replaceState(null, '', '#/s1');
+  open();
+
+  // like the app: Ctrl+Tab / Ctrl+Shift+Tab go through the sessions in sidebar order
+  document.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey || e.key !== 'Tab') return;
+    e.preventDefault();
+    const ids = order();
+    const i = ids.indexOf(current().id);
+    location.hash = `#/${ids[(i + (e.shiftKey ? ids.length - 1 : 1)) % ids.length]}`;
+  });
+
+  // ---- the recording's layer: captions, key caps, title cards ------------------
+  const hud = document.createElement('div');
+  hud.id = 'demo-hud';
+  hud.innerHTML = '<div class="caps gone"></div><div class="cap" hidden></div>';
+  const card = document.createElement('div');
+  card.id = 'demo-card';
+  document.documentElement.append(hud, card); // after <body>, so above everything in it
+  const capsEl = hud.querySelector('.caps');
+  const capEl = hud.querySelector('.cap');
+  let fadeTimer = 0;
+  let capTimer = 0;
+  const held = new Set();
+
+  window.__demo = {
+    caption(keys, text) {
+      clearTimeout(capTimer);
+      capEl.classList.add('out');
+      capTimer = setTimeout(() => {
+        if (!text) { capEl.hidden = true; return; }
+        capEl.hidden = false;
+        capEl.innerHTML = `<span class="ck">${esc(keys)}</span><span class="dot">·</span><span>${esc(text)}</span>`;
+        requestAnimationFrame(() => capEl.classList.remove('out'));
+      }, capEl.hidden ? 0 : 180);
+    },
+    down(label) {
+      clearTimeout(fadeTimer);
+      if (capsEl.classList.contains('gone')) { capsEl.replaceChildren(); capsEl.classList.remove('gone'); }
+      while (capsEl.children.length >= 5) capsEl.firstChild.remove();
+      const k = document.createElement('kbd');
+      k.textContent = label;
+      if (label.length > 1) k.className = 'word';
+      k.classList.add('down');
+      capsEl.append(k);
+      held.add(k);
+    },
+    up(label) {
+      for (const k of [...held]) {
+        if (k.textContent !== label) continue;
+        k.classList.remove('down');
+        held.delete(k);
+      }
+      if (!held.size) fadeTimer = setTimeout(() => capsEl.classList.add('gone'), 1300);
+    },
+    clearKeys() { clearTimeout(fadeTimer); capsEl.classList.add('gone'); },
+    card(kind) {
+      if (!kind) return card.classList.remove('on');
+      card.innerHTML = kind === 'title'
+        ? '<div class="inner"><div class="name">Normal Mode</div><div class="sub">vim keys for the Claude desktop app</div>' +
+          '<div class="row"><span>j</span><span>k</span><span>{</span><span>}</span><span>f</span><span>?</span></div></div>'
+        : '<div class="inner"><div class="name">Normal Mode</div><div class="url">github.com/danielrousseaug/normal-mode</div>' +
+          '<div class="fine">Unofficial · not affiliated with Anthropic · MIT</div></div>';
+      card.classList.add('on');
+    },
+  };
+</script>
+<script>
+  // opened outside the recorder (e.g. in a browser): load Normal Mode here
+  if (location.protocol !== 'app:') {
+    window.__NORMAL_MODE_FORCE = true;
+    document.write('<script src="../../src/normal-mode.js"><\/script>');
+  }
+</script>
+</body>
+</html>
